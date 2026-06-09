@@ -1,5 +1,5 @@
-Nome do Jogador,N. de Gols,N. de Assistencias,Ranking FIFA,Conquista de titulos na temporada,Valor de mercado,Nota Media de desempenho,Clean Sheet,MOTM,Pontuacao
-Kylian Mbappe,44,10,2,2,180000000.0,8.2,0,9,112.4
-Vinicius Junior,24,11,5,3,150000000.0,8.0,0,7,92.05
-Jude Bellingham,23,13,4,3,180000000.0,7.9,0,6,90.7
-Rodri,9,14,8,4,120000000.0,8.4,0,8,85.8
+Jogador,NºGols,NºAssist,RankingFIFA,Títulos,ValorMercado,NotaMédia,CleanSheet,MOTM,Pontuação
+Kylian Mbappe,44,10,2,2,180M,8.2,0,9,116.0
+Vinicius Junior,24,11,5,3,150M,8.0,0,7,95.05
+Jude Bellingham,23,13,4,3,180M,7.9,0,6,94.3
+Rodri,9,14,8,4,120M,8.4,0,8,88.2

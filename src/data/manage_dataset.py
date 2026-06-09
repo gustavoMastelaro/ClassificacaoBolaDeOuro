@@ -6,24 +6,84 @@ DEFAULT_CSV_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "data", "ranking_jogadores.csv")
 )
 
-# Definicao dos campos/colunas do dataset (sem acentos e caracteres especiais)
+# Definicao dos novos campos/colunas curtos do dataset (conforme solicitado pelo usuario)
 CSV_COLUMNS = [
-    "Nome do Jogador",
-    "N. de Gols",
-    "N. de Assistencias",
-    "Ranking FIFA",
-    "Conquista de titulos na temporada",
-    "Valor de mercado",
-    "Nota Media de desempenho",
-    "Clean Sheet",
+    "Jogador",
+    "NºGols",
+    "NºAssist",
+    "RankingFIFA",
+    "Títulos",
+    "ValorMercado",
+    "NotaMédia",
+    "CleanSheet",
     "MOTM",
-    "Pontuacao"  # Coluna adicional para registrar a pontuacao heuristica calculada
+    "Pontuação"
 ]
+
+# Mapeamento para suportar nomes antigos ou alternativos de campos para compatibilidade
+KEY_MAPPING = {
+    "jogador": "Jogador",
+    "nome do jogador": "Jogador",
+    "n. de gols": "NºGols",
+    "n° de gols": "NºGols",
+    "nºgols": "NºGols",
+    "n. de assistencias": "NºAssist",
+    "n° de assistências": "NºAssist",
+    "nºassist": "NºAssist",
+    "ranking fifa": "RankingFIFA",
+    "rankingfifa": "RankingFIFA",
+    "conquista de titulos na temporada": "Títulos",
+    "conquista de títulos na temporada": "Títulos",
+    "títulos": "Títulos",
+    "titulos": "Títulos",
+    "valor de mercado": "ValorMercado",
+    "valormercado": "ValorMercado",
+    "nota media de desempenho": "NotaMédia",
+    "nota média de desempenho": "NotaMédia",
+    "notamédia": "NotaMédia",
+    "notamedia": "NotaMédia",
+    "clean sheet": "CleanSheet",
+    "cleansheet": "CleanSheet",
+    "motm": "MOTM",
+    "pontuacao": "Pontuação",
+    "pontuação": "Pontuação"
+}
+
+def parse_valor_mercado(val) -> float:
+    """
+    Remove o 'M' temporariamente e converte o valor de mercado para float numerico.
+    """
+    if pd.isna(val):
+        return 0.0
+    val_str = str(val).strip().upper()
+    if val_str.endswith("M"):
+        try:
+            # Remove o 'M' e multiplica por 1 milhao
+            return float(val_str[:-1]) * 1000000.0
+        except ValueError:
+            return 0.0
+    try:
+        return float(val_str)
+    except ValueError:
+        return 0.0
+
+def format_valor_mercado(val) -> str:
+    """
+    Formata o valor numerico para o formato simplificado com 'M' (ex: 180M).
+    """
+    try:
+        num = float(val)
+        return f"{int(num / 1000000)}M"
+    except (ValueError, TypeError):
+        # Se ja for uma string formatada (ex: '180M'), retorna ela mesma
+        val_str = str(val).strip()
+        if val_str.upper().endswith("M"):
+            return val_str
+        return val_str
 
 def init_csv(file_path: str = DEFAULT_CSV_PATH) -> None:
     """
     Inicializa o arquivo CSV com os cabecalhos corretos se ele ainda nao existir.
-    Garante tambem que a pasta de destino (ex: data/) seja criada.
     """
     directory = os.path.dirname(file_path)
     if directory and not os.path.exists(directory):
@@ -35,160 +95,159 @@ def init_csv(file_path: str = DEFAULT_CSV_PATH) -> None:
         df.to_csv(file_path, index=False, encoding="utf-8")
         print(f"Arquivo CSV inicializado com sucesso em: {file_path}")
     else:
-        print(f"O arquivo CSV ja existe em: {file_path}")
+        # Se o arquivo ja existe mas esta com colunas antigas, recria ou avisa
+        # Aqui fazemos a validacao estrutural para migrar se necessario
+        try:
+            df_existing = pd.read_csv(file_path, nrows=0)
+            if list(df_existing.columns) != CSV_COLUMNS:
+                # Recria com a nova estrutura para evitar conflitos
+                df = pd.DataFrame(columns=CSV_COLUMNS)
+                df.to_csv(file_path, index=False, encoding="utf-8")
+                print(f"Estrutura antiga detectada. Arquivo CSV recriado com novos cabecalhos em: {file_path}")
+        except Exception:
+            pass
 
 def add_or_update_player(player_data: dict, file_path: str = DEFAULT_CSV_PATH) -> None:
     """
-    Adiciona um novo jogador ou atualiza as informacoes se ele ja existir (busca por 'Nome do Jogador').
-    
-    player_data deve ser um dicionario contendo as chaves correspondentes aos campos do CSV.
-    Campos nao fornecidos serao preenchidos com valores padrao (0 ou 0.0).
+    Adiciona um novo jogador ou atualiza as informacoes se ele ja existir.
+    Mapeia chaves antigas e garante a formatacao com 'M' para o ValorMercado.
     """
-    # Garante que o arquivo CSV esteja inicializado
     init_csv(file_path)
-    
-    # Le o CSV existente
     df = pd.read_csv(file_path, encoding="utf-8")
     
-    # Valida se o 'Nome do Jogador' foi fornecido
-    player_name = player_data.get("Nome do Jogador")
+    # Processa e mapeia os dados recebidos para os novos nomes de coluna
+    mapped_data = {}
+    
+    # Primeiro, resolve o nome do jogador
+    player_name = None
+    for k, v in player_data.items():
+        k_clean = k.strip().lower()
+        if KEY_MAPPING.get(k_clean) == "Jogador":
+            player_name = str(v).strip()
+            break
+            
     if not player_name:
-        raise ValueError("O dicionario 'player_data' precisa conter a chave 'Nome do Jogador'.")
+        raise ValueError("O dicionario 'player_data' precisa conter o nome do jogador.")
+        
+    mapped_data["Jogador"] = player_name
 
-    # Normaliza e limpa os dados de entrada usando os campos padrao
-    cleaned_data = {}
+    # Inicializa os campos com valores padrao
     for col in CSV_COLUMNS:
-        if col == "Nome do Jogador":
-            cleaned_data[col] = str(player_name).strip()
-        elif col == "Pontuacao":
-            # A pontuacao sera calculada/recalculada dinamicamente, iniciamos com 0
-            cleaned_data[col] = float(player_data.get(col, 0.0))
-        elif col in ["Valor de mercado", "Nota Media de desempenho"]:
-            cleaned_data[col] = float(player_data.get(col, 0.0))
-        else:
-            # Demais campos sao numericos inteiros (Gols, Assistencias, Titulos, Clean Sheet, MOTM, etc.)
-            cleaned_data[col] = int(player_data.get(col, 0))
+        if col != "Jogador":
+            mapped_data[col] = 0.0 if col in ["NotaMédia", "Pontuação"] else 0
 
-    # Verifica se o jogador ja existe no dataframe
-    match_mask = df["Nome do Jogador"].str.strip().str.lower() == cleaned_data["Nome do Jogador"].lower()
+    # Copia os dados fornecidos aplicando o mapeamento
+    for k, v in player_data.items():
+        k_clean = k.strip().lower()
+        mapped_col = KEY_MAPPING.get(k_clean)
+        if mapped_col and mapped_col != "Jogador":
+            if mapped_col == "ValorMercado":
+                # Converte para numerico primeiro e depois salva no formato com 'M'
+                num_val = parse_valor_mercado(v)
+                mapped_data[mapped_col] = format_valor_mercado(num_val)
+            elif mapped_col in ["NotaMédia", "Pontuação"]:
+                mapped_data[mapped_col] = float(v)
+            else:
+                try:
+                    mapped_data[mapped_col] = int(v)
+                except ValueError:
+                    mapped_data[mapped_col] = 0
+
+    # Verifica se o jogador ja existe
+    match_mask = df["Jogador"].str.strip().str.lower() == mapped_data["Jogador"].lower()
     
     if match_mask.any():
-        # Atualiza a linha existente
         idx = df[match_mask].index[0]
         for col in CSV_COLUMNS:
-            df.at[idx, col] = cleaned_data[col]
-        print(f"Dados do jogador '{cleaned_data['Nome do Jogador']}' foram atualizados.")
+            df.at[idx, col] = mapped_data[col]
+        print(f"Dados do jogador '{mapped_data['Jogador']}' foram atualizados.")
     else:
-        # Adiciona uma nova linha
-        new_row = pd.DataFrame([cleaned_data])
+        new_row = pd.DataFrame([mapped_data])
         if df.empty:
             df = new_row
         else:
             df = pd.concat([df, new_row], ignore_index=True)
-        print(f"Jogador '{cleaned_data['Nome do Jogador']}' adicionado com sucesso.")
+        print(f"Jogador '{mapped_data['Jogador']}' adicionado com sucesso.")
         
-    # Salva as alteracoes de volta no CSV
     df.to_csv(file_path, index=False, encoding="utf-8")
     
-    # Recalcula o ranking de forma automatica apos insercao/atualizacao
+    # Recalcula o ranking apos modificacao
     recalculate_ranking(file_path)
 
 def recalculate_ranking(file_path: str = DEFAULT_CSV_PATH) -> None:
     """
-    Le o CSV, recalcula a pontuacao de cada jogador com base em uma pontuacao heuristica,
-    ordena os jogadores do melhor para o pior e salva o arquivo novamente.
-    
-    Heuristica simples provisoria:
-    Pontuacao = Gols + Assistencias + (Nota Media de desempenho * 5) + MOTM + (Titulos * 2) - (Ranking FIFA * 0.1)
+    Le o CSV, processa o ValorMercado (removendo o 'M' para computacao) se necessario,
+    recalcula a pontuacao heuristica, ordena do melhor para o pior e salva.
     """
     if not os.path.exists(file_path):
-        print(f"Erro: O arquivo '{file_path}' nao existe. Inicialize-o primeiro.")
+        print(f"Erro: O arquivo '{file_path}' nao existe.")
         return
         
     df = pd.read_csv(file_path, encoding="utf-8")
     
     if df.empty:
-        print("O arquivo CSV esta vazio. Nenhum ranking a recalcular.")
+        print("O arquivo CSV esta vazio.")
         return
 
-    # Garante que os tipos estao corretos antes de fazer o calculo matematico
-    df["N. de Gols"] = pd.to_numeric(df["N. de Gols"], errors="coerce").fillna(0).astype(int)
-    df["N. de Assistencias"] = pd.to_numeric(df["N. de Assistencias"], errors="coerce").fillna(0).astype(int)
-    df["Nota Media de desempenho"] = pd.to_numeric(df["Nota Media de desempenho"], errors="coerce").fillna(0.0).astype(float)
+    # Garante os tipos de dados
+    df["NºGols"] = pd.to_numeric(df["NºGols"], errors="coerce").fillna(0).astype(int)
+    df["NºAssist"] = pd.to_numeric(df["NºAssist"], errors="coerce").fillna(0).astype(int)
+    df["NotaMédia"] = pd.to_numeric(df["NotaMédia"], errors="coerce").fillna(0.0).astype(float)
     df["MOTM"] = pd.to_numeric(df["MOTM"], errors="coerce").fillna(0).astype(int)
-    df["Conquista de titulos na temporada"] = pd.to_numeric(df["Conquista de titulos na temporada"], errors="coerce").fillna(0).astype(int)
-    df["Ranking FIFA"] = pd.to_numeric(df["Ranking FIFA"], errors="coerce").fillna(100).astype(int)
+    df["Títulos"] = pd.to_numeric(df["Títulos"], errors="coerce").fillna(0).astype(int)
+    df["RankingFIFA"] = pd.to_numeric(df["RankingFIFA"], errors="coerce").fillna(100).astype(int)
 
-    # Formula provisoria de pontuacao
-    # Valorizamos gols, assistencias, premios MOTM, titulos conquistados e a consistencia da nota media.
-    # Penalizamos de forma sutil se o Ranking FIFA da selecao nacional for muito baixo.
-    df["Pontuacao"] = (
-        df["N. de Gols"] * 1.0 +
-        df["N. de Assistencias"] * 0.8 +
-        df["Nota Media de desempenho"] * 5.0 +
+    # Tratamento especial do ValorMercado para remocao do 'M' para uso no calculo
+    valores_mercado_numericos = df["ValorMercado"].apply(parse_valor_mercado)
+
+    # Formula de pontuacao (incorporando levemente o valor de mercado numerico)
+    df["Pontuação"] = (
+        df["NºGols"] * 1.0 +
+        df["NºAssist"] * 0.8 +
+        df["NotaMédia"] * 5.0 +
         df["MOTM"] * 1.5 +
-        df["Conquista de titulos na temporada"] * 3.0 -
-        (df["Ranking FIFA"] * 0.05)
+        df["Títulos"] * 3.0 -
+        (df["RankingFIFA"] * 0.05) +
+        (valores_mercado_numericos / 50000000.0) # Bonus com base no valor de mercado
     )
     
+    # Formata de forma limpa as notas finais
+    df["Pontuação"] = df["Pontuação"].round(2)
+    
     # Ordena da maior pontuacao para a menor
-    df_sorted = df.sort_values(by="Pontuacao", ascending=False).reset_index(drop=True)
+    df_sorted = df.sort_values(by="Pontuação", ascending=False).reset_index(drop=True)
     
     # Salva de volta no CSV
     df_sorted.to_csv(file_path, index=False, encoding="utf-8")
     print("Ranking recalculado e ordenado com sucesso.")
 
 if __name__ == "__main__":
-    # Teste simples para validacao do script
-    print("Iniciando teste do gerenciador de dataset...")
-    
-    # Caminho do CSV de teste
+    print("=== Executando Testes Locais do Gerenciador de Dataset ===")
     test_csv = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "data", "ranking_jogadores_teste.csv")
     )
-    
-    # Remove arquivo de teste anterior se existir
     if os.path.exists(test_csv):
         os.remove(test_csv)
         
     init_csv(test_csv)
     
-    # Jogador 1
-    player1 = {
-        "Nome do Jogador": "Lionel Messi",
-        "N. de Gols": 28,
-        "N. de Assistencias": 15,
-        "Ranking FIFA": 1,
-        "Conquista de titulos na temporada": 2,
-        "Valor de mercado": 35000000,
-        "Nota Media de desempenho": 8.1,
-        "Clean Sheet": 0,
-        "MOTM": 10
+    p1 = {
+        "Jogador": "Messi",
+        "NºGols": 20,
+        "NºAssist": 10,
+        "RankingFIFA": 1,
+        "Títulos": 1,
+        "ValorMercado": 35000000, # Numerico puro para testar a formatacao automatica com M
+        "NotaMédia": 8.0,
+        "CleanSheet": 0,
+        "MOTM": 5
     }
     
-    # Jogador 2
-    player2 = {
-        "Nome do Jogador": "Erling Haaland",
-        "N. de Gols": 45,
-        "N. de Assistencias": 5,
-        "Ranking FIFA": 45,
-        "Conquista de titulos na temporada": 3,
-        "Valor de mercado": 180000000,
-        "Nota Media de desempenho": 7.8,
-        "Clean Sheet": 0,
-        "MOTM": 8
-    }
+    add_or_update_player(p1, test_csv)
     
-    # Adicionando/Atualizando jogadores no arquivo de teste
-    add_or_update_player(player1, test_csv)
-    add_or_update_player(player2, test_csv)
-    
-    # Lendo o resultado do teste
     df_test = pd.read_csv(test_csv)
-    print("\nConteudo final do CSV de Teste:")
-    print(df_test[["Nome do Jogador", "N. de Gols", "Nota Media de desempenho", "Pontuacao"]])
+    print("\nVisualizacao do CSV de Teste:")
+    print(df_test)
     
-    # Limpeza do arquivo de teste
     if os.path.exists(test_csv):
         os.remove(test_csv)
-        print("\nArquivo de teste limpo.")

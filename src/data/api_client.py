@@ -43,7 +43,7 @@ class FootballAPIClient:
         self.is_mock_mode = False
         if not self.api_key or self.api_key == "seu_token_aqui" or self.api_key.startswith("MOCK"):
             print("[AVISO] FootballAPIClient: 'FOOTBALL_API_KEY' ausente ou invalida no .env.")
-            print("[INFO] O cliente funcionara em modo MOCK (simulado) como fallback.")
+            print("[INFO] O cliente funcionarera em modo MOCK (simulado) como fallback.")
             self.is_mock_mode = True
             self.api_key = "MOCK_KEY"
         else:
@@ -104,7 +104,7 @@ class FootballAPIClient:
             clean_sheets = 0
             
             nationality = player_info.get("nationality", "").strip().lower()
-            ranking_fifa = FIFA_RANKINGS_MAPPING.get(nationality, 50) # default para 50 se nao listado
+            ranking_fifa = FIFA_RANKINGS_MAPPING.get(nationality, 50)
             
             # Identifica posicao
             position = "Desconhecido"
@@ -134,11 +134,10 @@ class FootballAPIClient:
             # Estimativas para campos ausentes na resposta direta de estatisticas da API de Jogadores:
             # 1. Clean Sheets (apenas para goleiros)
             if position.lower() in ["goalkeeper", "goleiro"]:
-                # Estima clean sheets proporcional a nota do goleiro
                 clean_sheets = int((nota_media - 6.0) * 15) if nota_media > 6.0 else 2
                 clean_sheets = max(0, min(30, clean_sheets))
                 
-            # 2. MOTM (Man of the Match) - Estimado com base na nota media e gols
+            # 2. MOTM - Estimado com base na nota media e gols
             motm_estimado = max(0, int((nota_media - 7.0) * 10) + int(total_gols * 0.15))
             
             # 3. Titulos da temporada - Valor padrao de fallback
@@ -153,14 +152,14 @@ class FootballAPIClient:
             print(f"[API] Dados reais processados com sucesso para: {player_info.get('name')}")
             
             return {
-                "Nome do Jogador": player_info.get("name"),
-                "N. de Gols": total_gols,
-                "N. de Assistencias": total_assists,
-                "Ranking FIFA": ranking_fifa,
-                "Conquista de titulos na temporada": titulos,
-                "Valor de mercado": valor_mercado,
-                "Nota Media de desempenho": nota_media,
-                "Clean Sheet": clean_sheets,
+                "Jogador": player_info.get("name"),
+                "NºGols": total_gols,
+                "NºAssist": total_assists,
+                "RankingFIFA": ranking_fifa,
+                "Títulos": titulos,
+                "ValorMercado": valor_mercado,
+                "NotaMédia": nota_media,
+                "CleanSheet": clean_sheets,
                 "MOTM": motm_estimado
             }
             
@@ -175,68 +174,68 @@ class FootballAPIClient:
         """
         name_clean = player_name.strip().lower()
         
-        # Banco estatico com alguns craques
+        # Banco estatico com alguns craques usando cabecalhos corretos
         mock_database = {
             "vinicius junior": {
-                "Nome do Jogador": "Vinicius Junior",
-                "N. de Gols": 24,
-                "N. de Assistencias": 11,
-                "Ranking FIFA": 5,
-                "Conquista de titulos na temporada": 3,
-                "Valor de mercado": 150000000.0,
-                "Nota Media de desempenho": 8.00,
-                "Clean Sheet": 0,
+                "Jogador": "Vinicius Junior",
+                "NºGols": 24,
+                "NºAssist": 11,
+                "RankingFIFA": 5,
+                "Títulos": 3,
+                "ValorMercado": 150000000.0,
+                "NotaMédia": 8.00,
+                "CleanSheet": 0,
                 "MOTM": 7
             },
             "jude bellingham": {
-                "Nome do Jogador": "Jude Bellingham",
-                "N. de Gols": 23,
-                "N. de Assistencias": 13,
-                "Ranking FIFA": 4,
-                "Conquista de titulos na temporada": 3,
-                "Valor de mercado": 180000000.0,
-                "Nota Media de desempenho": 7.90,
-                "Clean Sheet": 0,
+                "Jogador": "Jude Bellingham",
+                "NºGols": 23,
+                "NºAssist": 13,
+                "RankingFIFA": 4,
+                "Títulos": 3,
+                "ValorMercado": 180000000.0,
+                "NotaMédia": 7.90,
+                "CleanSheet": 0,
                 "MOTM": 6
             },
             "kylian mbappe": {
-                "Nome do Jogador": "Kylian Mbappe",
-                "N. de Gols": 44,
-                "N. de Assistencias": 10,
-                "Ranking FIFA": 2,
-                "Conquista de titulos na temporada": 2,
-                "Valor de mercado": 180000000.0,
-                "Nota Media de desempenho": 8.20,
-                "Clean Sheet": 0,
+                "Jogador": "Kylian Mbappe",
+                "NºGols": 44,
+                "NºAssist": 10,
+                "RankingFIFA": 2,
+                "Títulos": 2,
+                "ValorMercado": 180000000.0,
+                "NotaMédia": 8.20,
+                "CleanSheet": 0,
                 "MOTM": 9
             },
             "rodri": {
-                "Nome do Jogador": "Rodri",
-                "N. de Gols": 9,
-                "N. de Assistencias": 14,
-                "Ranking FIFA": 8,
-                "Conquista de titulos na temporada": 4,
-                "Valor de mercado": 120000000.0,
-                "Nota Media de desempenho": 8.40,
-                "Clean Sheet": 0,
+                "Jogador": "Rodri",
+                "NºGols": 9,
+                "NºAssist": 14,
+                "RankingFIFA": 8,
+                "Títulos": 4,
+                "ValorMercado": 120000000.0,
+                "NotaMédia": 8.40,
+                "CleanSheet": 0,
                 "MOTM": 8
             },
             "erling haaland": {
-                "Nome do Jogador": "Erling Haaland",
-                "N. de Gols": 45,
-                "N. de Assistencias": 5,
-                "Ranking FIFA": 45,
-                "Conquista de titulos na temporada": 3,
-                "Valor de mercado": 180000000.0,
-                "Nota Media de desempenho": 7.80,
-                "Clean Sheet": 0,
+                "Jogador": "Erling Haaland",
+                "NºGols": 45,
+                "NºAssist": 5,
+                "RankingFIFA": 45,
+                "Títulos": 3,
+                "ValorMercado": 180000000.0,
+                "NotaMédia": 7.80,
+                "CleanSheet": 0,
                 "MOTM": 8
             }
         }
         
         for key, value in mock_database.items():
             if key in name_clean or name_clean in key:
-                print(f"[API Fallback] Retornando dados simulados predefinidos para: {value['Nome do Jogador']}")
+                print(f"[API Fallback] Retornando dados simulados predefinidos para: {value['Jogador']}")
                 return value
                 
         # Geracao dinamica para outros jogadores
@@ -256,14 +255,14 @@ class FootballAPIClient:
             assistencias = random.randint(0, 1)
             
         return {
-            "Nome do Jogador": player_name.strip().title(),
-            "N. de Gols": gols,
-            "N. de Assistencias": assistencias,
-            "Ranking FIFA": ranking_fifa,
-            "Conquista de titulos na temporada": titulos,
-            "Valor de mercado": valor_mercado,
-            "Nota Media de desempenho": nota,
-            "Clean Sheet": clean_sheet,
+            "Jogador": player_name.strip().title(),
+            "NºGols": gols,
+            "NºAssist": assistencias,
+            "RankingFIFA": ranking_fifa,
+            "Títulos": titulos,
+            "ValorMercado": valor_mercado,
+            "NotaMédia": nota,
+            "CleanSheet": clean_sheet,
             "MOTM": motm
         }
 
@@ -274,8 +273,6 @@ class FootballAPIClient:
 if __name__ == "__main__":
     print("=== Testando Integracao com API / Fallback ===")
     client = FootballAPIClient()
-    
-    # Busca um jogador no modo ativo (inicialmente caira no Mock)
     stats = client.buscar_estatisticas_jogador("Lionel Messi")
     print("\nEstatisticas Lionel Messi:")
     for k, v in stats.items():
