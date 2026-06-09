@@ -1,10 +1,19 @@
 import os
 import random
-import requests
-from dotenv import load_dotenv
 
-# Carrega as variaveis de ambiente a partir de um arquivo .env se ele existir na raiz
-load_dotenv()
+# Tenta importar python-dotenv de forma segura
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Se python-dotenv nao estiver instalado, continua sem carregar do arquivo .env
+    load_dotenv = None
+
+# Tenta importar requests de forma segura
+try:
+    import requests
+except ImportError:
+    requests = None
 
 # Dicionario auxiliar para mapear o ranking da FIFA dos paises mais comuns
 FIFA_RANKINGS_MAPPING = {
@@ -36,27 +45,30 @@ class FootballAPIClient:
     """
     
     def __init__(self):
-        # Carrega a chave de API das variaveis de ambiente (.env)
+        # Carrega a chave de API das variaveis de ambiente
         self.api_key = os.getenv("FOOTBALL_API_KEY")
         
         # Define se estamos em modo simulado (Mock) por padrao ou por falta de chave valida
         self.is_mock_mode = False
         if not self.api_key or self.api_key == "seu_token_aqui" or self.api_key.startswith("MOCK"):
-            print("[AVISO] FootballAPIClient: 'FOOTBALL_API_KEY' ausente ou invalida no .env.")
-            print("[INFO] O cliente funcionarera em modo MOCK (simulado) como fallback.")
             self.is_mock_mode = True
             self.api_key = "MOCK_KEY"
-        else:
-            print(f"[API] Chave de API carregada com sucesso: {self.api_key[:5]}... (ocultada)")
+            
+        # Forca o modo mock caso a biblioteca requests nao esteja instalada no ambiente
+        if requests is None:
+            self.is_mock_mode = True
 
-    def buscar_estatisticas_jogador(self, nome_jogador: str, season: int = 2023) -> dict:
+    def buscar_dados_api(self, nome: str, time: str, season: int = 2023) -> dict:
         """
-        Faz uma requisicao HTTP real para a API-FOOTBALL buscando dados do jogador.
-        Caso ocorra algum erro (limite de requests, falha de rede ou chave invalida),
-        o metodo aciona automaticamente o fallback para retornar dados mockados coerentes.
+        Busca dados estatisticos de um jogador da temporada atual, filtrando pelo time do jogador.
         """
-        if self.is_mock_mode:
-            return self._obter_dados_mock(nome_jogador)
+        if self.is_mock_mode or requests is None:
+            if requests is None:
+                print("[INFO] Biblioteca 'requests' nao esta instalada. Utilizando modo MOCK.")
+            else:
+                print("[AVISO] FootballAPIClient: 'FOOTBALL_API_KEY' ausente ou invalida no .env.")
+                print("[INFO] O cliente funcionara em modo MOCK (simulado) como fallback.")
+            return self._obter_dados_mock(nome)
             
         url = "https://api-football-v1.p.rapidapi.com/v3/players"
         headers = {
@@ -64,52 +76,65 @@ class FootballAPIClient:
             "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com"
         }
         params = {
-            "search": nome_jogador,
+            "search": nome,
             "season": str(season)
         }
         
         try:
-            print(f"[API] Enviando requisicao para API-FOOTBALL buscando por: '{nome_jogador}' na temporada {season}...")
+            print(f"[API] Buscando jogador '{nome}' no time '{time}' na temporada {season}...")
             response = requests.get(url, headers=headers, params=params, timeout=10)
             
             # Verifica status HTTP
             if response.status_code == 403:
                 print("[API - Erro 403] Acesso negado. Chave de API invalida ou expirada. Ativando fallback...")
-                return self._obter_dados_mock(nome_jogador)
+                return self._obter_dados_mock(nome)
             elif response.status_code == 429:
                 print("[API - Erro 429] Limite de requisicoes excedido. Ativando fallback...")
-                return self._obter_dados_mock(nome_jogador)
+                return self._obter_dados_mock(nome)
             
             response.raise_for_status()
             data = response.json()
             
-            # Trata erros retornados no proprio corpo da API (comum na API-FOOTBALL)
+            # Trata erros retornados no proprio corpo da API
             if data.get("errors"):
                 print(f"[API - Erro Interno] Erros relatados pela API: {data['errors']}. Ativando fallback...")
-                return self._obter_dados_mock(nome_jogador)
+                return self._obter_dados_mock(nome)
                 
             results = data.get("response", [])
             if not results:
-                print(f"[API] Jogador '{nome_jogador}' nao foi encontrado na API-FOOTBALL. Ativando fallback...")
-                return self._obter_dados_mock(nome_jogador)
+                print(f"[API] Jogador '{nome}' nao foi encontrado na API-FOOTBALL. Ativando fallback...")
+                return self._obter_dados_mock(nome)
                 
-            # Processa o primeiro jogador retornado (match mais proximo)
-            player_info = results[0]["player"]
-            stats_list = results[0]["statistics"]
+            # Tenta encontrar correspondencia de jogador e time
+            player_found = None
+            stats_to_process = None
+            time_clean = time.strip().lower()
             
-            # Agrega estatisticas de todas as competicoes/times da temporada
+            for entry in results:
+                stats_list = entry.get("statistics", [])
+                matching_stats = [
+                    s for s in stats_list 
+                    if time_clean in s.get("team", {}).get("name", "").lower()
+                ]
+                if matching_stats:
+                    player_found = entry.get("player")
+                    stats_to_process = matching_stats
+                    break
+                    
+            # Se nao encontrou filtrando pelo time especifico, usa o primeiro resultado geral
+            if not player_found:
+                print(f"[API] Nao foi encontrada correspondencia exata para o time '{time}'. Usando primeiro resultado geral.")
+                player_found = results[0]["player"]
+                stats_to_process = results[0]["statistics"]
+            
+            # Agrega estatisticas de todas as competicoes do time/jogador
             total_gols = 0
             total_assists = 0
             ratings = []
             clean_sheets = 0
-            
-            nationality = player_info.get("nationality", "").strip().lower()
-            ranking_fifa = FIFA_RANKINGS_MAPPING.get(nationality, 50)
-            
-            # Identifica posicao
             position = "Desconhecido"
             
-            for stat in stats_list:
+            for stat in stats_to_process:
                 # Gols e Assistencias
                 goals_data = stat.get("goals", {})
                 total_gols += (goals_data.get("total") or 0)
@@ -131,7 +156,7 @@ class FootballAPIClient:
             # Calcula a media aritmetica das notas
             nota_media = round(sum(ratings) / len(ratings), 2) if ratings else 7.0
             
-            # Estimativas para campos ausentes na resposta direta de estatisticas da API de Jogadores:
+            # Estimativas para campos ausentes na resposta de estatisticas:
             # 1. Clean Sheets (apenas para goleiros)
             if position.lower() in ["goalkeeper", "goleiro"]:
                 clean_sheets = int((nota_media - 6.0) * 15) if nota_media > 6.0 else 2
@@ -144,18 +169,18 @@ class FootballAPIClient:
             titulos = random.randint(0, 2)
             
             # 4. Valor de Mercado - Estimativa baseada na idade, nota media e gols
-            idade = player_info.get("age", 25)
+            idade = player_found.get("age", 25)
             fator_idade = max(0.5, (38 - idade) / 10) if idade > 28 else 1.0
             valor_mercado = round((total_gols * 2.5 + total_assists * 1.5 + (nota_media - 6.0) * 20) * fator_idade * 1000000)
             valor_mercado = float(max(5000000, valor_mercado))
             
-            print(f"[API] Dados reais processados com sucesso para: {player_info.get('name')}")
+            print(f"[API] Dados reais processados com sucesso para: {player_found.get('name')}")
             
             return {
-                "Jogador": player_info.get("name"),
+                "Jogador": player_found.get("name"),
                 "NºGols": total_gols,
                 "NºAssist": total_assists,
-                "RankingFIFA": ranking_fifa,
+                "RankingFIFA": FIFA_RANKINGS_MAPPING.get(player_found.get("nationality", "").strip().lower(), 50),
                 "Títulos": titulos,
                 "ValorMercado": valor_mercado,
                 "NotaMédia": nota_media,
@@ -165,16 +190,15 @@ class FootballAPIClient:
             
         except Exception as e:
             print(f"[API - Erro de Conexao] Falha ao conectar a API externa: {e}. Ativando fallback...")
-            return self._obter_dados_mock(nome_jogador)
+            return self._obter_dados_mock(nome)
 
     def _obter_dados_mock(self, player_name: str) -> dict:
         """
         Gera e retorna dados simulados (mock) realistas para um jogador.
-        Usado quando nao ha chave de API ativa ou ocorre erro na requisicao externa.
         """
         name_clean = player_name.strip().lower()
         
-        # Banco estatico com alguns craques usando cabecalhos corretos
+        # Banco estatico com alguns craques
         mock_database = {
             "vinicius junior": {
                 "Jogador": "Vinicius Junior",
@@ -266,14 +290,15 @@ class FootballAPIClient:
             "MOTM": motm
         }
 
-    # Alias para compatibilidade caso outro script ainda chame get_player_stats
-    def get_player_stats(self, player_name: str) -> dict:
-        return self.buscar_estatisticas_jogador(player_name)
+# Funcao exportada no nivel do modulo como solicitado
+def buscar_dados_api(nome: str, time: str) -> dict:
+    """
+    Funcao wrapper que instancia o FootballAPIClient e realiza a busca de dados do jogador.
+    """
+    client = FootballAPIClient()
+    return client.buscar_dados_api(nome, time)
 
 if __name__ == "__main__":
     print("=== Testando Integracao com API / Fallback ===")
-    client = FootballAPIClient()
-    stats = client.buscar_estatisticas_jogador("Lionel Messi")
-    print("\nEstatisticas Lionel Messi:")
-    for k, v in stats.items():
-        print(f"  {k}: {v}")
+    res = buscar_dados_api("Lionel Messi", "Inter Miami")
+    print("\nResultado Messi:", res)
